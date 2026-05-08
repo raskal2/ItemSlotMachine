@@ -92,8 +92,13 @@ item-pot:
 # Combos are activated by a specific pattern of symbols in the reels (item frames) after the spin has stopped completely
 combos:
 
-  # The default example combo
-  # If you want to disable this combo, you can comment out this section and its sub-sections
+  # ============================================================
+  # 中央の横ラインコンボ（従来の判定）
+  # パターン：[左, 中, 右] が全て同じ場合
+  # ============================================================
+  
+  # The default example combo - Golden Apple triple
+  # 黄金のリンゴが3つ揃った場合の報酬
   example:
 
     # The symbol pattern which activates this combo
@@ -112,3 +117,70 @@ combos:
       - 'RAISE_ITEM_POT:diamond-3, iron_sword-1, sponge-20'
       - 'PAY_OUT_MONEY_POT'
       - 'PAY_OUT_ITEM_POT'
+
+  # ============================================================
+  # 複数ライン対応コンボ
+  # 注意：複数ラインの判定は SlotMachine.java の isGridWin() メソッドで
+  # 自動的に行われます。以下はカスタムコンボ例です
+  # ============================================================
+
+  # メロンスライスペアコンボ（中央の横ラインで左と中が同じ場合）
+  # 報酬：小額の金銭と軽いアイテム
+  melon_pair:
+    pattern: ['melon_slice', 'melon_slice', '*']
+    actions:
+      - 'PAY_OUT_MONEY:100.0'
+      - 'PAY_OUT_ITEMS:apple-5'
+
+  # ニンジンペアコンボ（中央の横ラインで中と右が同じ場合）
+  carrot_pair:
+    pattern: ['*', 'carrot', 'carrot']
+    actions:
+      - 'PAY_OUT_MONEY:150.0'
+      - 'PAY_OUT_ITEMS:carrot-10'
+
+  # スイートベリートリプルコンボ
+  sweet_berries_triple:
+    pattern: ['sweet_berries', 'sweet_berries', 'sweet_berries']
+    actions:
+      - 'MULTIPLY_MONEY_POT:1.5'
+      - 'RAISE_ITEM_POT:diamond-2, emerald-1'
+      - 'PAY_OUT_MONEY:500.0'
+
+  # アップルペアコンボ
+  apple_pair:
+    pattern: ['apple', 'apple', '*']
+    actions:
+      - 'PAY_OUT_MONEY:75.0'
+      - 'PAY_OUT_ITEMS:apple-8'
+
+# ============================================================
+# 複数ラインの説明
+# ============================================================
+# SlotMachine.java が自動的に以下のラインを判定します：
+#
+# 1. 中央の横ライン（従来の判定）
+#    左リール == 中央リール == 右リール
+#    → 判定: isCentralHorizontalWin(grid)
+#
+# 2. 右上がり斜めライン
+#    左下位置 == 中央位置 == 右上位置
+#    → 判定: isAscendingDiagonalWin(grid)
+#    → パターン例：[左, 中, 右] が全て同じ場合に自動で判定
+#
+# 3. 右下がり斜めライン
+#    左上位置 == 中央位置 == 右下位置
+#    → 判定: isDescendingDiagonalWin(grid)
+#    → パターン例：[左, 中, 右] が全て同じ場合に自動で判定
+#
+# これらのラインは buildReelGrid() メソッドで 3×3 グリッドに変換され、
+# isGridWin() メソッドで自動的にチェックされます。
+#
+# 3リール版では、すべてのラインで同じパターンになるため、
+# 実質的には「横ラインが揃った場合に複数ラインの判定がアクティブになる」
+# という動作になります。
+#
+# 将来的に9リール（3×3）に対応する場合は、以下を実装してください：
+# - Design.java: itemFrames を9個に対応させる
+# - SlotMachine.java: buildReelGrid() を拡張して本当の3×3グリッドを構築
+# - 各スピンで異なる行のリール結果を生成
