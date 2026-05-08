@@ -5,7 +5,7 @@ debug-mode-enabled: false
 # The messages file name ending of the file which will be loaded
 # The plugin will attempt to load the file 'messages_<tag>.json'
 # Built-in language tags are 'en-US' for English and 'de-DE' for German
-language-tag: 'en-US'
+language-tag: 'en-JP'
 
 # This section contains settings for designs
 design:
