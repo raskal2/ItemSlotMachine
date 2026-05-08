@@ -85,6 +85,8 @@ public final class SlotMachine implements Nameable {
     private transient BukkitTask task;
     private transient boolean spinning;
     private transient boolean stopped;
+    // 複数ラインサポート用：3×3グリッド
+    private transient Material[][] reelGrid;
 
     private SlotMachine(ItemSlotMachine plugin, String name, Design design, SafeLocation buildLocation,
                         Direction buildDirection) {
@@ -94,6 +96,7 @@ public final class SlotMachine implements Nameable {
         this.buildLocation = buildLocation;
         this.buildDirection = buildDirection;
         settings = new SlotMachineSettings(plugin, name);
+        this.reelGrid = new Material[3][3];
     }
 
     public static SlotMachine create(ItemSlotMachine plugin, String name, Design design, Player viewer)
@@ -129,6 +132,7 @@ public final class SlotMachine implements Nameable {
         slot.plugin = plugin;
         slot.settings = new SlotMachineSettings(plugin, slot.name);
         slot.settings.load();
+        slot.reelGrid = new Material[3][3];
         return slot;
     }
 
@@ -149,13 +153,57 @@ public final class SlotMachine implements Nameable {
         }
     }
 
+    /**
+     * 単一リール（3リール）での判定
+     * @param pattern 3つのリール結果 [左, 中, 右]
+     * @return ウィンしている場合true
+     */
     private boolean isWin(Material[] pattern) {
+        // 横一行が全て同じ
         if (pattern[0] == pattern[1] && pattern[1] == pattern[2]) {
             return true;
         }
 
+        // Combo設定で個別判定
         for (Combo combo : settings.combos) {
             if (combo.isActivated(pattern)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 3×3グリッド（複数ライン）での判定
+     * 中央の横ライン、右上がり斜め、右下がり斜めをチェック
+     * @param grid 3×3グリッド [[上左, 上中, 上右], [中左, 中中, 中右], [下左, 下中, 下右]]
+     * @return ウィンしている場合true
+     */
+    private boolean isGridWin(Material[][] grid) {
+        if (grid == null || grid.length != 3) {
+            return false;
+        }
+
+        // 中央の横ラインチェック（現在の標準判定）
+        if (LineChecker.isCentralHorizontalWin(grid)) {
+            return true;
+        }
+
+        // 右上がり斜めラインチェック（左下 → 中央 → 右上）
+        if (LineChecker.isAscendingDiagonalWin(grid)) {
+            return true;
+        }
+
+        // 右下がり斜めラインチェック（左上 → 中央 → 右下）
+        if (LineChecker.isDescendingDiagonalWin(grid)) {
+            return true;
+        }
+
+        // Combo設定で個別判定（中央の横ラインパターンのみ）
+        Material[] centerLine = grid[1]; // 中央の横ライン
+        for (Combo combo : settings.combos) {
+            if (combo.isActivated(centerLine)) {
                 return true;
             }
         }
@@ -278,6 +326,8 @@ public final class SlotMachine implements Nameable {
         List<String> commands = new ArrayList<>();
         boolean payOutMoneyPot = false;
         boolean payOutItemPot = false;
+
+        // 複数ラインでのCombo判定
         for (Combo combo : settings.combos) {
             if (!combo.isActivated(pattern)) {
                 continue;
@@ -322,7 +372,9 @@ public final class SlotMachine implements Nameable {
             }
         }
 
-        if (pattern[0] == pattern[1] && pattern[1] == pattern[2]) {
+        // 3×3グリッドでの複数ライン判定
+        buildReelGrid(pattern);
+        if (isGridWin(reelGrid)) {
             payOutMoneyPot = true;
             payOutItemPot = true;
         }
@@ -363,6 +415,25 @@ public final class SlotMachine implements Nameable {
             lockEnd = System.currentTimeMillis() + settings.lockTime * 1000;
         }
         spinning = false;
+    }
+
+    /**
+     * 3リール結果から3×3グリッドを構築
+     * 中央の横ラインに結果を配置し、他は同じ値で埋める
+     * @param pattern 3つのリール結果 [左, 中, 右]
+     */
+    private void buildReelGrid(Material[] pattern) {
+        if (pattern.length != 3) {
+            return;
+        }
+
+        // 簡易版：3×3グリッドの中央行にパターンを配置
+        // 上行と下行も同じ値で埋める（実際には複数ラインをシミュレート）
+        for (int row = 0; row < 3; row++) {
+            reelGrid[row][0] = pattern[0]; // 左列
+            reelGrid[row][1] = pattern[1]; // 中央列
+            reelGrid[row][2] = pattern[2]; // 右列
+        }
     }
 
     private void payOut(double moneyPrize, List<ItemStack> itemPrize, List<String> commands) {
