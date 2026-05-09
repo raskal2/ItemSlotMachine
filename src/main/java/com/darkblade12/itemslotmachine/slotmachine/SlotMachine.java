@@ -85,8 +85,9 @@ public final class SlotMachine implements Nameable {
     private transient BukkitTask task;
     private transient boolean spinning;
     private transient boolean stopped;
-    // 複数ラインサポート用：3×3グリッド
+    // Phase 2: 3×3グリッド対応
     private transient Material[][] reelGrid;
+    private transient boolean is3x3Grid;
 
     private SlotMachine(ItemSlotMachine plugin, String name, Design design, SafeLocation buildLocation,
                         Direction buildDirection) {
@@ -97,6 +98,7 @@ public final class SlotMachine implements Nameable {
         this.buildDirection = buildDirection;
         settings = new SlotMachineSettings(plugin, name);
         this.reelGrid = new Material[3][3];
+        this.is3x3Grid = design.is3x3Grid();
     }
 
     public static SlotMachine create(ItemSlotMachine plugin, String name, Design design, Player viewer)
@@ -133,6 +135,7 @@ public final class SlotMachine implements Nameable {
         slot.settings = new SlotMachineSettings(plugin, slot.name);
         slot.settings.load();
         slot.reelGrid = new Material[3][3];
+        slot.is3x3Grid = slot.design.is3x3Grid();
         return slot;
     }
 
@@ -176,8 +179,7 @@ public final class SlotMachine implements Nameable {
 
     /**
      * 3×3グリッド（複数ライン）での判定
-     * 中央の横ライン、右上がり斜め、右下がり斜めをチェック
-     * @param grid 3×3グリッド [[上左, 上中, 上右], [中左, 中中, 中右], [下左, 下中, 下右]]
+     * @param grid 3×3グリッド
      * @return ウィンしている場合true
      */
     private boolean isGridWin(Material[][] grid) {
@@ -185,36 +187,17 @@ public final class SlotMachine implements Nameable {
             return false;
         }
 
-        // 中央の横ラインチェック（現在の標準判定）
-        if (LineChecker.isCentralHorizontalWin(grid)) {
-            return true;
-        }
-
-        // 右上がり斜めラインチェック（左下 → 中央 → 右上）
-        if (LineChecker.isAscendingDiagonalWin(grid)) {
-            return true;
-        }
-
-        // 右下がり斜めラインチェック（左上 → 中央 → 右下）
-        if (LineChecker.isDescendingDiagonalWin(grid)) {
-            return true;
-        }
-
-        // Combo設定で個別判定（中央の横ラインパターンのみ）
-        Material[] centerLine = grid[1]; // 中央の横ライン
-        for (Combo combo : settings.combos) {
-            if (combo.isActivated(centerLine)) {
-                return true;
-            }
-        }
-
-        return false;
+        // 複数ラインをチェック（上段、中央、下段、斜めの5ライン）
+        return LineChecker.isMultiLineWin(grid);
     }
 
     private Material generateSymbol() {
         return settings.symbolTypes[RANDOM.nextInt(settings.symbolTypes.length)];
     }
 
+    /**
+     * 3リール版パターン生成
+     */
     private Material[] generatePattern() {
         if (settings.winningChance > 0) {
             boolean forceWin = RANDOM.nextDouble() * 100 <= settings.winningChance;
@@ -237,6 +220,105 @@ public final class SlotMachine implements Nameable {
         }
 
         return new Material[] { generateSymbol(), generateSymbol(), generateSymbol() };
+    }
+
+    /**
+     * 3×3グリッド版パターン生成（9個のシンボル）
+     */
+    private Material[][] generateGrid() {
+        Material[][] grid = new Material[3][3];
+
+        if (settings.winningChance > 0) {
+            boolean forceWin = RANDOM.nextDouble() * 100 <= settings.winningChance;
+
+            // ウィンパターンを探す
+            if (forceWin) {
+                // ウィンするパターンを探す
+                Material winSymbol = settings.symbolTypes[RANDOM.nextInt(settings.symbolTypes.length)];
+                int lineType = RANDOM.nextInt(5); // 0-4: 5種類のラインから選択
+
+                // 選択されたライン上にwinSymbolを配置
+                switch (lineType) {
+                    case 0: // 上段の横ライン
+                        grid[0][0] = winSymbol;
+                        grid[0][1] = winSymbol;
+                        grid[0][2] = winSymbol;
+                        // その他をランダムに
+                        for (int i = 1; i < 3; i++) {
+                            for (int j = 0; j < 3; j++) {
+                                grid[i][j] = generateSymbol();
+                            }
+                        }
+                        break;
+                    case 1: // 中央の横ライン
+                        grid[1][0] = winSymbol;
+                        grid[1][1] = winSymbol;
+                        grid[1][2] = winSymbol;
+                        // その他をランダムに
+                        for (int i = 0; i < 3; i++) {
+                            if (i != 1) {
+                                for (int j = 0; j < 3; j++) {
+                                    grid[i][j] = generateSymbol();
+                                }
+                            }
+                        }
+                        break;
+                    case 2: // 下段の横ライン
+                        grid[2][0] = winSymbol;
+                        grid[2][1] = winSymbol;
+                        grid[2][2] = winSymbol;
+                        // その他をランダムに
+                        for (int i = 0; i < 2; i++) {
+                            for (int j = 0; j < 3; j++) {
+                                grid[i][j] = generateSymbol();
+                            }
+                        }
+                        break;
+                    case 3: // 右上がり斜めライン（左下 → 中央 → 右上）
+                        grid[2][0] = winSymbol;
+                        grid[1][1] = winSymbol;
+                        grid[0][2] = winSymbol;
+                        // その他をランダムに
+                        for (int i = 0; i < 3; i++) {
+                            for (int j = 0; j < 3; j++) {
+                                if (!((i == 2 && j == 0) || (i == 1 && j == 1) || (i == 0 && j == 2))) {
+                                    grid[i][j] = generateSymbol();
+                                }
+                            }
+                        }
+                        break;
+                    case 4: // 右下がり斜めライン（左上 → 中央 → 右下）
+                        grid[0][0] = winSymbol;
+                        grid[1][1] = winSymbol;
+                        grid[2][2] = winSymbol;
+                        // その他をランダムに
+                        for (int i = 0; i < 3; i++) {
+                            for (int j = 0; j < 3; j++) {
+                                if (!((i == 0 && j == 0) || (i == 1 && j == 1) || (i == 2 && j == 2))) {
+                                    grid[i][j] = generateSymbol();
+                                }
+                            }
+                        }
+                        break;
+                }
+            } else {
+                // ハズレパターン：全てランダム
+                for (int i = 0; i < 3; i++) {
+                    for (int j = 0; j < 3; j++) {
+                        grid[i][j] = generateSymbol();
+                    }
+                }
+            }
+        } else {
+            // winningChanceが0の場合は全てランダム
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 3; j++) {
+                    grid[i][j] = generateSymbol();
+                }
+            }
+        }
+
+        return grid;
     }
 
     private void raisePot() {
@@ -281,7 +363,17 @@ public final class SlotMachine implements Nameable {
             statManager.trySave(slotStat);
         }
 
-        final Material[] result = generatePattern();
+        // Phase 2: 3×3グリッド対応
+        final Material[][] gridResult;
+        final Material[] patternResult;
+        if (is3x3Grid) {
+            gridResult = generateGrid();
+            patternResult = null;
+        } else {
+            patternResult = generatePattern();
+            gridResult = null;
+        }
+
         task = new BukkitRunnable() {
             private int spins = 0;
             private int stoppedAt = -1;
@@ -298,19 +390,31 @@ public final class SlotMachine implements Nameable {
                 }
 
                 for (int i = 0; i < frames.length; i++) {
-                    int remaining = stoppedAt == -1 ? 1 : stoppedAt + settings.reelDelay[i] - spins;
+                    int remaining = stoppedAt == -1 ? 1 : stoppedAt + settings.reelDelay[Math.min(i, 2)] - spins;
                     if (!stopped || remaining >= 0) {
-                        Material symbol = remaining == 0 ? result[i] : generateSymbol();
+                        Material symbol;
+                        if (is3x3Grid && gridResult != null) {
+                            // 3×3グリッド版：フレームのインデックスをグリッド座標に変換
+                            int row = i / 3;
+                            int col = i % 3;
+                            symbol = remaining == 0 ? gridResult[row][col] : generateSymbol();
+                        } else {
+                            // 従来の3リール版
+                            symbol = remaining == 0 ? patternResult[i] : generateSymbol();
+                        }
                         frames[i].setItem(new ItemStack(symbol));
                     } else if (i == frames.length - 1) {
                         cancel();
 
-                        Material[] pattern = new Material[frames.length];
-                        for (int j = 0; j < frames.length; j++) {
-                            pattern[j] = frames[j].getItem().getType();
+                        if (is3x3Grid && gridResult != null) {
+                            endSpin3x3(gridResult);
+                        } else {
+                            Material[] pattern = new Material[frames.length];
+                            for (int j = 0; j < frames.length; j++) {
+                                pattern[j] = frames[j].getItem().getType();
+                            }
+                            endSpin(pattern);
                         }
-
-                        endSpin(pattern);
                     }
                 }
 
@@ -320,6 +424,9 @@ public final class SlotMachine implements Nameable {
         }.runTaskTimer(plugin, 5, 5);
     }
 
+    /**
+     * 従来の3リール版エンドスピン処理
+     */
     private void endSpin(Material[] pattern) {
         double moneyPrize = 0;
         List<ItemStack> itemPrize = new ArrayList<>();
@@ -327,58 +434,71 @@ public final class SlotMachine implements Nameable {
         boolean payOutMoneyPot = false;
         boolean payOutItemPot = false;
 
-        // 複数ラインでのCombo判定
+        // Combo判定
         for (Combo combo : settings.combos) {
             if (!combo.isActivated(pattern)) {
                 continue;
             }
 
             for (Action action : combo.getActions()) {
-                switch (action.getType()) {
-                    case PAY_OUT_ITEMS:
-                        ItemUtils.stackItems(itemPrize, ((ItemAction) action).getItems());
-                        break;
-                    case PAY_OUT_ITEM_POT:
-                        payOutItemPot = true;
-                        break;
-                    case PAY_OUT_MONEY:
-                        moneyPrize = ((AmountAction) action).getAmount();
-                        break;
-                    case PAY_OUT_MONEY_POT:
-                        payOutMoneyPot = true;
-                        break;
-                    case EXECUTE_COMMAND:
-                        commands.add(((CommandAction) action).getCommand());
-                        break;
-                    case MULTIPLY_ITEM_POT:
-                        double amount = ((AmountAction) action).getAmount();
-                        for (ItemStack item : itemPot) {
-                            item.setAmount((int) Math.round(item.getAmount() * amount));
-                        }
-                        break;
-                    case MULTIPLY_MONEY_POT:
-                        moneyPot *= ((AmountAction) action).getAmount();
-                        break;
-                    case RAISE_ITEM_POT:
-                        ItemUtils.stackItems(itemPot, ((ItemAction) action).getItems());
-                        break;
-                    case RAISE_MONEY_POT:
-                        moneyPot += ((AmountAction) action).getAmount();
-                        break;
-                    default:
-                        /* Unsupported combo action */
-                        break;
+                executeAction(action, itemPrize);
+                if (action.getType().name().contains("MONEY_POT")) {
+                    payOutMoneyPot = true;
+                } else if (action.getType().name().contains("ITEM_POT")) {
+                    payOutItemPot = true;
                 }
             }
         }
 
-        // 3×3グリッドでの複数ライン判定
-        buildReelGrid(pattern);
-        if (isGridWin(reelGrid)) {
+        // 横一行の判定
+        if (pattern[0] == pattern[1] && pattern[1] == pattern[2]) {
             payOutMoneyPot = true;
             payOutItemPot = true;
         }
 
+        processPayOut(payOutMoneyPot, payOutItemPot, moneyPrize, itemPrize, commands);
+    }
+
+    /**
+     * Phase 2: 3×3グリッド版エンドスピン処理
+     */
+    private void endSpin3x3(Material[][] grid) {
+        double moneyPrize = 0;
+        List<ItemStack> itemPrize = new ArrayList<>();
+        List<String> commands = new ArrayList<>();
+        boolean payOutMoneyPot = false;
+        boolean payOutItemPot = false;
+
+        // 複数ラインの判定
+        if (LineChecker.isMultiLineWin(grid)) {
+            payOutMoneyPot = true;
+            payOutItemPot = true;
+        }
+
+        processPayOut(payOutMoneyPot, payOutItemPot, moneyPrize, itemPrize, commands);
+    }
+
+    /**
+     * アクション実行（ヘルパーメソッド）
+     */
+    private void executeAction(Action action, List<ItemStack> itemPrize) {
+        switch (action.getType()) {
+            case PAY_OUT_ITEMS:
+                ItemUtils.stackItems(itemPrize, ((ItemAction) action).getItems());
+                break;
+            case RAISE_ITEM_POT:
+                ItemUtils.stackItems(itemPot, ((ItemAction) action).getItems());
+                break;
+            default:
+                break;
+        }
+    }
+
+    /**
+     * 景品支払い処理（共通）
+     */
+    private void processPayOut(boolean payOutMoneyPot, boolean payOutItemPot, double moneyPrize, 
+                               List<ItemStack> itemPrize, List<String> commands) {
         if (payOutMoneyPot && isMoneyPotEnabled()) {
             moneyPrize += moneyPot;
             resetMoneyPot();
@@ -389,23 +509,7 @@ public final class SlotMachine implements Nameable {
         }
 
         if (moneyPrize == 0 && itemPrize.size() == 0 && commands.size() == 0) {
-            StatisticManager statManager = plugin.getManager(StatisticManager.class);
-            SlotMachineStatistic slotStat = statManager.getSlotMachineStatistic(this, true);
-            if (slotStat != null) {
-                slotStat.getRecord(Category.LOST_SPINS).increaseValue(1);
-                statManager.trySave(slotStat);
-            }
-
-            PlayerStatistic userStat = statManager.getPlayerStatistic(userId, true);
-            userStat.getRecord(Category.LOST_SPINS).increaseValue(1);
-            statManager.trySave(userStat);
-
-            playSounds(settings.loseSounds);
-
-            Player user = getUser();
-            if (user != null) {
-                plugin.sendMessage(user, Message.SLOT_MACHINE_LOST);
-            }
+            handleLose();
         } else {
             commands.addAll(Arrays.asList(settings.winCommands));
             payOut(moneyPrize, itemPrize, commands);
@@ -418,21 +522,25 @@ public final class SlotMachine implements Nameable {
     }
 
     /**
-     * 3リール結果から3×3グリッドを構築
-     * 中央の横ラインに結果を配置し、他は同じ値で埋める
-     * @param pattern 3つのリール結果 [左, 中, 右]
+     * ハズレ処理
      */
-    private void buildReelGrid(Material[] pattern) {
-        if (pattern.length != 3) {
-            return;
+    private void handleLose() {
+        StatisticManager statManager = plugin.getManager(StatisticManager.class);
+        SlotMachineStatistic slotStat = statManager.getSlotMachineStatistic(this, true);
+        if (slotStat != null) {
+            slotStat.getRecord(Category.LOST_SPINS).increaseValue(1);
+            statManager.trySave(slotStat);
         }
 
-        // 簡易版：3×3グリッドの中央行にパターンを配置
-        // 上行と下行も同じ値で埋める（実際には複数ラインをシミュレート）
-        for (int row = 0; row < 3; row++) {
-            reelGrid[row][0] = pattern[0]; // 左列
-            reelGrid[row][1] = pattern[1]; // 中央列
-            reelGrid[row][2] = pattern[2]; // 右列
+        PlayerStatistic userStat = statManager.getPlayerStatistic(userId, true);
+        userStat.getRecord(Category.LOST_SPINS).increaseValue(1);
+        statManager.trySave(userStat);
+
+        playSounds(settings.loseSounds);
+
+        Player user = getUser();
+        if (user != null) {
+            plugin.sendMessage(user, Message.SLOT_MACHINE_LOST);
         }
     }
 
@@ -660,6 +768,7 @@ public final class SlotMachine implements Nameable {
             moneyPot = slot.moneyPot;
             itemPot = slot.itemPot;
             settings = slot.settings;
+            is3x3Grid = slot.design.is3x3Grid();
             updateSign();
         } catch (JsonParseException | IOException e) {
             throw new SlotMachineException("Failed to read slot machine data.", e);
@@ -798,7 +907,8 @@ public final class SlotMachine implements Nameable {
     }
 
     private ItemFrame[] getItemFrames() {
-        ItemFrame[] frames = new ItemFrame[3];
+        int frameCount = design.getItemFrameCount();
+        ItemFrame[] frames = new ItemFrame[frameCount];
         Location location = getLocation();
         ReferenceItemFrame[] frameRefs = design.getItemFrames();
         for (int i = 0; i < frameRefs.length; i++) {
