@@ -3,67 +3,39 @@ package com.darkblade12.itemslotmachine.slotmachine;
 import org.bukkit.Material;
 
 /**
- * リアルなスロットマシンの複数ライン判定を実装
- * 中央の3リール横一行 + 右上がり斜め + 右下がり斜めをサポート
+ * リアルなスロットマシンの複数ライン判定（3×3グリッド対応）
+ * 
+ * グリッド構造:
+ *   [0][0] [0][1] [0][2]   (上段)
+ *   [1][0] [1][1] [1][2]   (中央行)
+ *   [2][0] [2][1] [2][2]   (下段)
+ * 
+ * サポートするライン:
+ * 1. 上段の横ライン: [0][0] == [0][1] == [0][2]
+ * 2. 中央の横ライン: [1][0] == [1][1] == [1][2]
+ * 3. 下段の横ライン: [2][0] == [2][1] == [2][2]
+ * 4. 右上がり斜めライン: [2][0] == [1][1] == [0][2]
+ * 5. 右下がり斜めライン: [0][0] == [1][1] == [2][2]
  */
 public class LineChecker {
     
     /**
-     * パターンが横一行で全て同じかチェック
-     * @param pattern 3つのリール結果 [左, 中, 右]
-     * @return 全て同じ場合true
-     */
-    public static boolean isHorizontalWin(Material[] pattern) {
-        if (pattern.length != 3) {
-            return false;
-        }
-        return pattern[0] == pattern[1] && pattern[1] == pattern[2];
-    }
-    
-    /**
-     * 複数ラインのいずれかでウィンしているかチェック
-     * @param pattern 3つのリール結果 [左, 中, 右]
+     * 3×3グリッド全体での複数ライン判定
+     * @param grid 3×3のリール結果
      * @return いずれかのラインがウィンしている場合true
      */
-    public static boolean isMultiLineWin(Material[] pattern) {
-        if (pattern.length != 3) {
-            return false;
-        }
-        
-        // 横ラインチェック（従来の判定）
-        if (isHorizontalWin(pattern)) {
-            return true;
-        }
-        
-        // 注: 3リールのみなので、斜めラインは実装不可
-        // 3×3グリッド（9リール）に拡張する場合はここで斜めラインチェックを追加
-        
-        return false;
-    }
-    
-    /**
-     * 3×3グリッド版：複数ラインの判定
-     * 使用予定：将来的に3×3グリッドに対応する場合
-     * @param grid 3×3のリール結果 [[上左, 上中, 上右], [中左, 中中, 中右], [下左, 下中, 下右]]
-     * @return いずれかのラインがウィンしている場合true
-     */
-    public static boolean isGridMultiLineWin(Material[][] grid) {
+    public static boolean isMultiLineWin(Material[][] grid) {
         if (grid == null || grid.length != 3 || grid[0].length != 3) {
             return false;
         }
         
-        // 中央の横ラインチェック（現在の1ラインのみ対応）
-        if (isCentralHorizontalWin(grid)) {
+        // 3つの横ラインをチェック
+        if (isTopHorizontalWin(grid) || isCentralHorizontalWin(grid) || isBottomHorizontalWin(grid)) {
             return true;
         }
         
-        // 右上がり斜めラインチェック（左下 → 中央 → 右上）
-        if (isAscendingDiagonalWin(grid)) {
-            return true;
-        }
-        
-        // 右下がり斜めラインチェック（左上 → 中央 → 右下）
-        if (isDescendingDiagonalWin(grid)) {
+        // 2つの斜めラインをチェック
+        if (isAscendingDiagonalWin(grid) || isDescendingDiagonalWin(grid)) {
             return true;
         }
         
@@ -71,21 +43,46 @@ public class LineChecker {
     }
     
     /**
-     * 中央の横ライン（真ん中の列が全て同じ）をチェック
+     * 上段の横ライン（[0][0], [0][1], [0][2]）をチェック
      * @param grid 3×3グリッド
-     * @return 中央横ラインがウィンしている場合true
+     * @return 上段がウィンしている場合true
      */
-    public static boolean isCentralHorizontalWin(Material[][] grid) {
-        Material center = grid[1][0]; // 中央列の左
-        return center != null && center != Material.AIR
-            && center.equals(grid[1][1])  // 中央列の中
-            && center.equals(grid[1][2]); // 中央列の右
+    public static boolean isTopHorizontalWin(Material[][] grid) {
+        Material top = grid[0][0];
+        return top != null && top != Material.AIR
+            && top.equals(grid[0][1])
+            && top.equals(grid[0][2]);
     }
     
     /**
-     * 右上がり斜めライン（左下 → 中央 → 右上）をチェック
+     * 中央の横ライン（[1][0], [1][1], [1][2]）をチェック
      * @param grid 3×3グリッド
-     * @return 右上がり斜めラインがウィンしている場合true
+     * @return 中央がウィンしている場合true
+     */
+    public static boolean isCentralHorizontalWin(Material[][] grid) {
+        Material center = grid[1][0];
+        return center != null && center != Material.AIR
+            && center.equals(grid[1][1])
+            && center.equals(grid[1][2]);
+    }
+    
+    /**
+     * 下段の横ライン（[2][0], [2][1], [2][2]）をチェック
+     * @param grid 3×3グリッド
+     * @return 下段がウィンしている場合true
+     */
+    public static boolean isBottomHorizontalWin(Material[][] grid) {
+        Material bottom = grid[2][0];
+        return bottom != null && bottom != Material.AIR
+            && bottom.equals(grid[2][1])
+            && bottom.equals(grid[2][2]);
+    }
+    
+    /**
+     * 右上がり斜めライン（[2][0], [1][1], [0][2]）をチェック
+     * 左下 → 中央 → 右上
+     * @param grid 3×3グリッド
+     * @return 右上がり斜めがウィンしている場合true
      */
     public static boolean isAscendingDiagonalWin(Material[][] grid) {
         Material start = grid[2][0]; // 左下
@@ -95,14 +92,46 @@ public class LineChecker {
     }
     
     /**
-     * 右下がり斜めライン（左上 → 中央 → 右下）をチェック
+     * 右下がり斜めライン（[0][0], [1][1], [2][2]）をチェック
+     * 左上 → 中央 → 右下
      * @param grid 3×3グリッド
-     * @return 右下がり斜めラインがウィンしている場合true
+     * @return 右下がり斜めがウィンしている場合true
      */
     public static boolean isDescendingDiagonalWin(Material[][] grid) {
         Material start = grid[0][0]; // 左上
         return start != null && start != Material.AIR
             && start.equals(grid[1][1])  // 中央
             && start.equals(grid[2][2]); // 右下
+    }
+    
+    /**
+     * ウィンしたラインの種類を取得（デバッグ用）
+     * @param grid 3×3グリッド
+     * @return ウィンしたラインの説明文字列（複数行、最後にnullを含む配列）
+     */
+    public static String[] getWinLines(Material[][] grid) {
+        if (grid == null || grid.length != 3 || grid[0].length != 3) {
+            return new String[0];
+        }
+        
+        java.util.List<String> winLines = new java.util.ArrayList<>();
+        
+        if (isTopHorizontalWin(grid)) {
+            winLines.add("上段の横ライン");
+        }
+        if (isCentralHorizontalWin(grid)) {
+            winLines.add("中央の横ライン");
+        }
+        if (isBottomHorizontalWin(grid)) {
+            winLines.add("下段の横ライン");
+        }
+        if (isAscendingDiagonalWin(grid)) {
+            winLines.add("右上がり斜めライン");
+        }
+        if (isDescendingDiagonalWin(grid)) {
+            winLines.add("右下がり斜めライン");
+        }
+        
+        return winLines.toArray(new String[0]);
     }
 }
